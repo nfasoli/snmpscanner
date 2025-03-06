@@ -276,6 +276,7 @@ app.get("/snmp", async (req, res) => {
 
         console.log(`ip: ${ip}, vendor: ${brand || "sconosciuto"}`);
         const data = await getSnmpData(ip, vendor_oids[brand]);
+        console.log("data: " + data.MAC.length)
         const buffer = Buffer.from(data.MAC, "binary");
 
         // Converti il buffer in un array di byte
@@ -392,13 +393,14 @@ app.get("/scan", async (req, res) => {
                 }
                 results_allip.push(ipAddr);
 
-                if (!brand) return;
+                if (!brand)
+                   return;
 
                 console.log(`ip: ${ipAddr}, vendor: ${brand || "sconosciuto"}`);
 
                 const data = await getSnmpData(ipAddr, vendor_oids[brand]);
                 const buffer = Buffer.from(data.MAC, "binary");
-
+4
                 // Converti il buffer in un array di byte
                 const ba = Array.from(buffer);
 
@@ -410,7 +412,7 @@ app.get("/scan", async (req, res) => {
 
                 if (data) {
                   results.push({ ip: ipAddr, ...data });
-                  await saveToDatabase(ipAddr, "", brand, data);
+                  await saveToDatabase(ipAddr, mac, brand, data);
                 }
 
                 //res.json(data);
