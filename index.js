@@ -14,6 +14,17 @@ const cors = require("cors");
 app.use(cors());
 const port = 5000;
 
+const zebra_oids = {
+  SerialNumber: "1.3.6.1.4.1.10642.1.4.0", // SN,
+  Uptime: "1.3.6.1.2.1.1.3.0", // HostName
+  Hostname: "1.3.6.1.2.1.1.5.0", // Uptime
+  Syslocation: "1.3.6.1.2.1.1.6.0", // SysLocation
+  //Inventory: "1.3.6.1.4.1.1129.1.2.1.1.1.4.1.0", // Inv
+  Model: "1.3.6.1.2.1.25.3.2.1.3.1",
+  FW: "1.3.6.1.4.1.10642.1.7.0",
+  MAC: "1.3.6.1.2.1.2.2.1.6.1",
+};
+
 const ricoh_oids = {
   SerialNumber: "1.3.6.1.4.1.367.3.2.1.2.1.4.0", // SN,
   Uptime: "1.3.6.1.2.1.1.3.0", // HostName
@@ -51,12 +62,14 @@ const vendor_check = {
   lexmark: "1.3.6.1.4.1.641.2.1.2.1.4.1",
   ricoh: "1.3.6.1.4.1.1129.1.2.1.1.1.1.2.0",
   toshiba: "1.3.6.1.4.1.367.3.2.1.1.1.2.0",
+  zebra: "1.3.6.1.4.1.10642.1.7.0"
 };
 
 const vendor_oids = {
   lexmark: lexmark_oids,
   ricoh: ricoh_oids,
   toshiba: toshiba_oids,
+  zebra: zebra_oids,
 };
 
 const vendor = {
@@ -71,6 +84,8 @@ const vendor = {
   "00:00:74": ricoh_oids, // RICOH
   "00:04:24": toshiba_oids,
   "30:b5:c2": undefined, // TP_LINK
+  "60:95:32": zebra_oids,
+  "48:a4:93": zebra_oids
 };
 
 const vendor_name = {
@@ -85,6 +100,8 @@ const vendor_name = {
   "00:00:74": "ricoh", // RICOH
   "00:04:24": "toshiba",
   "30:b5:c2": "tp-link", // TP_LINK
+  "60:95:32": "zebra",
+  "48:a4:93": "zebra"  
 };
 
 function swapped(obj) {
@@ -222,14 +239,14 @@ app.get("/snmp", async (req, res) => {
 
   try {
     const p = await pingus.icmp({ host: ip });
-    log.info(p);
+    log.info(JSON.stringify(p, null, " "));
     if (p.status == "timeout") {
       res.status(500).send(`ip ${ip} not online`);
       return;
     }
 
     const udp = await pingus.udp({ host: ip, port: 161 });
-    log.info(udp);
+    log.info(JSON.stringify(udp, null, " "));
     if (udp.status != "open") {
       res.status(500).send(`ip ${ip} SNMP disabled ${p.status}`);
       return;
@@ -250,6 +267,7 @@ app.get("/snmp", async (req, res) => {
     } else {
       try {
         log.info("IP outside subnet: going for SNMP: " + ip);
+
         // Intanto controllo che SNMP sia attivo
 
         // poi verifico la marca stampante
@@ -258,6 +276,8 @@ app.get("/snmp", async (req, res) => {
         // 1129 = toshiba
         let fw = undefined;
         let brand = undefined;
+        fw = await getSnmpData(ip, ["1.3.6.1.2.1.1.1.0"]);
+        log.info(JSON.stringify(fw))
 
         for (const [b, v] of Object.entries(vendor_check)) {
           try {
@@ -291,7 +311,7 @@ app.get("/snmp", async (req, res) => {
 
         res.json(data);
       } catch (error) {
-        log.info("error1 " + error);
+        log.info("/snmp " + error);
 
         res.status(400).send("MAC not found");
       }
@@ -334,6 +354,7 @@ app.get("/scan", async (req, res) => {
     const lastIp = ip.toLong(subnetInfo.lastAddress);
     const results = [];
     const results_allip = [];
+    const no_brand=[];
 
     const promises = [];
     for (let longIp = firstIp; longIp <= lastIp; longIp++) {
@@ -394,9 +415,18 @@ app.get("/scan", async (req, res) => {
                 }
                 results_allip.push(ipAddr);
 
+                // inserisco l'ip in un array per identificare brand non ancora censiti.
+                // Si possono fare a mano in seguito
                 if (!brand)
-                   return;
-
+                {
+                  try {
+                    fw = await getSnmpData(ipAddr, ["1.3.6.1.2.1.1.1.0"]);
+                    no_brand.push(ipAddr)
+                  } catch (snmp_ko) {
+                    log.info(`${ipAddr} snmp disabled`);
+                  }
+                  return;
+                }
                 log.info(`ip: ${ipAddr}, vendor: ${brand || "sconosciuto"}`);
 
                 const data = await getSnmpData(ipAddr, vendor_oids[brand]);
@@ -434,6 +464,10 @@ app.get("/scan", async (req, res) => {
     log.info(
       `result.len = ${results.length}, allip.len = ${results_allip.length}`
     );
+    log.info(
+      no_brand
+    );
+
     res.json({ results: results, ips: results_allip });
   } catch (error) {
     res.status(500).json({ error: error.toString() });
@@ -444,7 +478,7 @@ app.get("/getall", async (req, res) => {
   const connection = await mysql.createConnection(dbConfig);
 
   try {
-    const query = `SELECT * from printers.printer order by ip`;
+    const query = `SELECT *, DATE_FORMAT(lastupd, '%H:%i:%s %d-%m-%y') AS formatted_date from printers.printer order by ip`;
 
     const [rows, fields] = await connection.query(query);
 

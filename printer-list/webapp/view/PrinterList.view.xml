@@ -3,7 +3,9 @@
     xmlns="sap.m">
     <Page id="page" title="{i18n>title}">
         <content>
-            <Table id="printerTable" inset="false" items="{/printers}">
+            <Table id="printerTable" inset="false" items="{/printers}"         growing="true"
+        growingScrollToLoad="true"
+        growingThreshold="100">
                 <headerToolbar>
                     <Toolbar id="_IDGenToolbar">
                         <Title id="_IDGenTitle" text="Printer List" />
@@ -41,7 +43,7 @@
                         <Text id="_IDGenText19" text="vendor" />
                     </Column>
                     <Column id="_IDGenColumn11">
-                        <Text id="_IDGenText20" text="lastupd" />
+                        <Text id="_IDGenText20" text="formatted_date"/>
                     </Column>
                 </columns>
                 <items>
@@ -57,7 +59,7 @@
                             <Text id="_IDGenText14" text="{Model}" />
                             <Text id="_IDGenText15" text="{FW}" />
                             <Text id="_IDGenText16" text="{vendor}" />
-                            <Text id="_IDGenText17" text="{lastupd}" /> 
+                            <Text id="_IDGenText17" text="{formatted_date}" /> 
                         </cells>
                     </ColumnListItem>
                 </items>
