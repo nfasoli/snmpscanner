@@ -6,6 +6,7 @@ const path = require("path");
 const arp = require("@network-utils/arp-lookup");
 const pingus = require("pingus");
 const mysql = require("mysql2/promise");
+const log = require("./utilities/logger.js")
 
 const app = express();
 const cors = require("cors");
@@ -160,7 +161,7 @@ oids.forEach(function (oid) {
             if (snmp.isVarbindError(varbinds[0])) {
                 console.error("Errore nel varbind: " + snmp.varbindError(varbinds[0]));
             } else {
-                console.log(varbinds[0].oid + " = " + varbinds[0].value);
+                log.info(varbinds[0].oid + " = " + varbinds[0].value);
             }
         }
     });
@@ -169,7 +170,7 @@ oids.forEach(function (oid) {
 
 async function saveToDatabase(ip, mac, vendor, data) {
   const connection = await mysql.createConnection(dbConfig);
-  console.log("saveToDatabase init " + JSON.stringify(data));
+  log.info("saveToDatabase init " + JSON.stringify(data));
   try {
     const query = `
       INSERT INTO printer (SerialNumber, Uptime, Hostname, Syslocation, Inventory, Model, FW, ip, MAC, vendor, lastupd)
@@ -187,7 +188,7 @@ async function saveToDatabase(ip, mac, vendor, data) {
         lastupd = NOW()
     `;
 
-    console.log(
+    log.info(
       `serialnumber: ${
         data.SerialNumber
       } ip ${ip} MAC ${mac} vendor ${JSON.stringify(vendor)}`
@@ -204,7 +205,7 @@ async function saveToDatabase(ip, mac, vendor, data) {
       mac,
       vendor,
     ]);
-    console.log("Data for ip " + ip + " saved to database");
+    log.info("Data for ip " + ip + " saved to database");
   } catch (err) {
     console.error("Error saving ip " + ip + " to database:", err);
     throw err;
@@ -221,14 +222,14 @@ app.get("/snmp", async (req, res) => {
 
   try {
     const p = await pingus.icmp({ host: ip });
-    console.log(p);
+    log.info(p);
     if (p.status == "timeout") {
       res.status(500).send(`ip ${ip} not online`);
       return;
     }
 
     const udp = await pingus.udp({ host: ip, port: 161 });
-    console.log(udp);
+    log.info(udp);
     if (udp.status != "open") {
       res.status(500).send(`ip ${ip} SNMP disabled ${p.status}`);
       return;
@@ -237,7 +238,7 @@ app.get("/snmp", async (req, res) => {
     let mac = await arp.toMAC(ip);
     // apparati a valle di device cisco ritornano mac mascherati
     if (mac && mac.slice(0, 8) != "00:00:0c") {
-      console.log(
+      log.info(
         `ip: ${ip}, MAC: ${mac}, vendor: ${
           vendor_name[mac.slice(0, 8)] || "sconosciuto"
         }`
@@ -248,7 +249,7 @@ app.get("/snmp", async (req, res) => {
       res.json(data);
     } else {
       try {
-        console.log("IP outside subnet: going for SNMP: " + ip);
+        log.info("IP outside subnet: going for SNMP: " + ip);
         // Intanto controllo che SNMP sia attivo
 
         // poi verifico la marca stampante
@@ -261,11 +262,11 @@ app.get("/snmp", async (req, res) => {
         for (const [b, v] of Object.entries(vendor_check)) {
           try {
             fw = await getSnmpData(ip, [v]);
-            console.log(`IP ${ip} brand ${b}`);
+            log.info(`IP ${ip} brand ${b}`);
             brand = b;
             break;
           } catch (wrong_brand) {
-            console.log(`tried ${b} on ip ${ip} no match ${wrong_brand}`);
+            log.info(`tried ${b} on ip ${ip} no match ${wrong_brand}`);
           }
         }
 
@@ -274,7 +275,7 @@ app.get("/snmp", async (req, res) => {
           return;
         }
 
-        console.log(`ip: ${ip}, vendor: ${brand || "sconosciuto"}`);
+        log.info(`ip: ${ip}, vendor: ${brand || "sconosciuto"}`);
         const data = await getSnmpData(ip, vendor_oids[brand]);
         const buffer = Buffer.from(data.MAC, "binary");
 
@@ -289,13 +290,13 @@ app.get("/snmp", async (req, res) => {
 
         res.json(data);
       } catch (error) {
-        console.log("error1 " + error);
+        log.info("error1 " + error);
 
         res.status(400).send("MAC not found");
       }
     }
   } catch (error) {
-    console.log("IP outside subnet: going for SNMP3: " + error);
+    log.info("IP outside subnet: going for SNMP3: " + error);
 
     res.status(500).json(error);
   }
@@ -338,25 +339,25 @@ app.get("/scan", async (req, res) => {
       const ipAddr = ip.fromLong(longIp);
       promises.push(
         (async () => {
-          console.log("Scanning ipAddr: " + ipAddr);
+          log.info("Scanning ipAddr: " + ipAddr);
           try {
             const p = await pingus.icmp({ host: ipAddr });
 
             if (p.status != "reply") {
-              console.log(`pingus icmp error: ${ipAddr} p.status=${p.status}`);
+              log.info(`pingus icmp error: ${ipAddr} p.status=${p.status}`);
               return;
             }
 
             const udp = await pingus.udp({ host: ipAddr, port: 161 });
             if (udp.status != "open") {
-              console.log(`pingus udp error: ${ipAddr} p.status=${p.status}`);
+              log.info(`pingus udp error: ${ipAddr} p.status=${p.status}`);
               return;
             }
 
-            console.log(`found something on ${ipAddr} p.status=${p.status}`);
+            log.info(`found something on ${ipAddr} p.status=${p.status}`);
             let mac = await arp.toMAC(ipAddr);
             if (mac && mac.slice(0, 8) != "00:00:0c") {
-              console.log(
+              log.info(
                 `ip: ${ipAddr}, MAC: ${mac}, vendor: ${
                   vendor_name[mac.slice(0, 8)] || "sconosciuto"
                 }`
@@ -371,7 +372,7 @@ app.get("/scan", async (req, res) => {
               }
             } else {
               try {
-                console.log("IP outside subnet: going for SNMP: " + ipAddr);
+                log.info("IP outside subnet: going for SNMP: " + ipAddr);
                 // Intanto controllo che SNMP sia attivo
 
                 // poi verifico la marca stampante
@@ -383,18 +384,18 @@ app.get("/scan", async (req, res) => {
                 for (const [b, v] of Object.entries(vendor_check)) {
                   try {
                     fw = await getSnmpData(ipAddr, [v]);
-                    console.log(`IP ${ipAddr} brand ${b}`);
+                    log.info(`IP ${ipAddr} brand ${b}`);
                     brand = b;
                     break;
                   } catch (wrong_brand) {
-                    console.log(`tried ${b} on ip ${ipAddr} no match`);
+                    log.info(`tried ${b} on ip ${ipAddr} no match`);
                   }
                 }
                 results_allip.push(ipAddr);
 
                 if (!brand) return;
 
-                console.log(`ip: ${ipAddr}, vendor: ${brand || "sconosciuto"}`);
+                log.info(`ip: ${ipAddr}, vendor: ${brand || "sconosciuto"}`);
 
                 const data = await getSnmpData(ipAddr, vendor_oids[brand]);
                 const buffer = Buffer.from(data.MAC, "binary");
@@ -415,11 +416,11 @@ app.get("/scan", async (req, res) => {
 
                 //res.json(data);
               } catch (error) {
-                console.log("MAC not found " + error);
+                log.info("MAC not found " + error);
               }
             }
           } catch (error) {
-            console.log(
+            log.info(
               "IP " + ipAddr + " outside subnet: errore generico " + error
             );
           }
@@ -428,7 +429,7 @@ app.get("/scan", async (req, res) => {
     }
 
     await Promise.all(promises);
-    console.log(
+    log.info(
       `result.len = ${results.length}, allip.len = ${results_allip.length}`
     );
     res.json({ results: results, ips: results_allip });
@@ -447,7 +448,7 @@ app.get("/getall", async (req, res) => {
 
     res.json(rows);
   } catch (error) {
-    console.log(error);
+    log.info(error);
     res.status(500).json({ error: error.toString() });
   } finally {
     await connection.end();
@@ -455,5 +456,5 @@ app.get("/getall", async (req, res) => {
 });
 
 app.listen(port, () => {
-  console.log(`Server running at http://localhost:${port}/`);
+  log.info(`Server running at http://localhost:${port}/`);
 });
