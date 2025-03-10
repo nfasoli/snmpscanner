@@ -5,7 +5,7 @@
         <content>
             <Table id="printerTable" inset="false" items="{/printers}"         growing="true"
         growingScrollToLoad="true"
-        growingThreshold="100">
+        growingThreshold="1200">
                 <headerToolbar>
                     <Toolbar id="_IDGenToolbar">
                         <Title id="_IDGenTitle" text="Printer List" />

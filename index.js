@@ -6,7 +6,7 @@ const path = require("path");
 const arp = require("@network-utils/arp-lookup");
 const pingus = require("pingus");
 const mysql = require("mysql2/promise");
-const log = require("./utilities/logger.js")
+const log = require("./utilities/logger.js");
 
 const app = express();
 const cors = require("cors");
@@ -14,6 +14,7 @@ const cors = require("cors");
 app.use(cors());
 const port = 5000;
 
+const mac_prefix = "1.3.6.1.2.1.2.2.1.6";
 const zebra_oids = {
   SerialNumber: "1.3.6.1.4.1.10642.1.4.0", // SN,
   Uptime: "1.3.6.1.2.1.1.3.0", // HostName
@@ -22,7 +23,8 @@ const zebra_oids = {
   //Inventory: "1.3.6.1.4.1.1129.1.2.1.1.1.4.1.0", // Inv
   Model: "1.3.6.1.2.1.25.3.2.1.3.1",
   FW: "1.3.6.1.4.1.10642.1.7.0",
-  MAC: "1.3.6.1.2.1.2.2.1.6.1",
+  MAC: "1.3.6.1.2.1.2.2.1.6.2",
+  MAC2: "1.3.6.1.2.1.2.2.1.6.3"
 };
 
 const ricoh_oids = {
@@ -44,7 +46,7 @@ const toshiba_oids = {
   Inventory: "1.3.6.1.4.1.1129.1.2.1.1.1.4.1.0", // Inv
   Model: "1.3.6.1.2.1.25.3.2.1.3.1",
   FW: "1.3.6.1.4.1.1129.1.2.1.1.1.1.2.0",
-  MAC: "1.3.6.1.2.1.2.2.1.6.1",
+  MAC: "1.3.6.1.2.1.2.2.1.6.2",
 };
 
 const lexmark_oids = {
@@ -52,17 +54,18 @@ const lexmark_oids = {
   Uptime: "1.3.6.1.2.1.1.3.0", // Uptime
   Hostname: "1.3.6.1.2.1.1.5.0", // Hostname
   Syslocation: "1.3.6.1.2.1.1.6.0", // SysLocation
-  // Inventory: "1.3.6.1.4.1.641.2.1.2.1.7.1", // Inv
+  Inventory: "1.3.6.1.4.1.641.2.1.2.1.7.1", // Inv
   Model: "1.3.6.1.4.1.641.2.1.2.1.2.1",
   FW: "1.3.6.1.4.1.641.2.1.2.1.4.1",
+  MAC2: "1.3.6.1.2.1.2.2.1.6.1",
   MAC: "1.3.6.1.2.1.2.2.1.6.2",
 };
 
 const vendor_check = {
   lexmark: "1.3.6.1.4.1.641.2.1.2.1.4.1",
-  ricoh: "1.3.6.1.4.1.1129.1.2.1.1.1.1.2.0",
-  toshiba: "1.3.6.1.4.1.367.3.2.1.1.1.2.0",
-  zebra: "1.3.6.1.4.1.10642.1.7.0"
+  toshiba: "1.3.6.1.4.1.1129.1.2.1.1.1.1.2.0",
+  ricoh: "1.3.6.1.4.1.367.3.2.1.1.1.2.0",
+  zebra: "1.3.6.1.4.1.10642.1.7.0",
 };
 
 const vendor_oids = {
@@ -85,7 +88,7 @@ const vendor = {
   "00:04:24": toshiba_oids,
   "30:b5:c2": undefined, // TP_LINK
   "60:95:32": zebra_oids,
-  "48:a4:93": zebra_oids
+  "48:a4:93": zebra_oids,
 };
 
 const vendor_name = {
@@ -101,7 +104,7 @@ const vendor_name = {
   "00:04:24": "toshiba",
   "30:b5:c2": "tp-link", // TP_LINK
   "60:95:32": "zebra",
-  "48:a4:93": "zebra"  
+  "48:a4:93": "zebra",
 };
 
 function swapped(obj) {
@@ -142,12 +145,12 @@ function setSnmpData(ip, oid, value, community = "public") {
 
 async function getSnmpData(ip, vendor, community = "public") {
   if (!vendor) return;
-  const session = snmp.createSession(ip, community);
-
+  //const session = snmp.createSession(ip, community);
   return new Promise((resolve, reject) => {
     const session = snmp.createSession(ip, community);
 
     session.get(Object.values(vendor), (error, varbinds) => {
+      log.debug(`ip: ${ip}, error: ${error}, varbinds: ${JSON.stringify(varbinds)}`);
       if (error) {
         // se lexmark è probabile che l'oid dell'inventario non venga gradito
         // facciamo la scansione a mano
@@ -157,9 +160,22 @@ async function getSnmpData(ip, vendor, community = "public") {
         varbinds.forEach((varbind) => {
           if (snmp.isVarbindError(varbind)) {
             if (snmp.varbindError(varbind) == snmp.RequestTimedOutError)
-              reject({ error: snmp.varbindError(varbind) });
+              reject(snmp.RequestTimedOutError);
           } else {
-            result[swapped(vendor)[varbind.oid]] = varbind.value?.toString();
+            let value = undefined;
+            switch (varbind.type) {
+              case snmp.ObjectType.TimeTicks:
+                value = varbind.value;
+                break;
+              case snmp.ObjectType.OctetString:
+                if (varbind.oid.startsWith(mac_prefix)) value = varbind.value;
+                else value = varbind.value.toString();
+                break;
+              default:
+                log.debug("snmp.ObjectType = " + varbind.type);
+                break;
+            }
+            result[swapped(vendor)[varbind.oid]] = value;
           }
         });
         resolve(result);
@@ -169,29 +185,13 @@ async function getSnmpData(ip, vendor, community = "public") {
   });
 }
 
-/*
-oids.forEach(function (oid) {
-    session.get([oid], function (error, varbinds) {
-        if (error) {
-            console.error("Errore con OID " + oid + ": " + error.toString());
-        } else {
-            if (snmp.isVarbindError(varbinds[0])) {
-                console.error("Errore nel varbind: " + snmp.varbindError(varbinds[0]));
-            } else {
-                log.info(varbinds[0].oid + " = " + varbinds[0].value);
-            }
-        }
-    });
-});
-*/
-
 async function saveToDatabase(ip, mac, vendor, data) {
   const connection = await mysql.createConnection(dbConfig);
   log.info("saveToDatabase init " + JSON.stringify(data));
   try {
     const query = `
-      INSERT INTO printer (SerialNumber, Uptime, Hostname, Syslocation, Inventory, Model, FW, ip, MAC, vendor, lastupd)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())
+      INSERT INTO printer (SerialNumber, Uptime, Hostname, Syslocation, Inventory, Model, FW, ip, MAC, vendor, firstseen, lastupd)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())
       ON DUPLICATE KEY UPDATE
         Uptime = VALUES(Uptime),
         Hostname = VALUES(Hostname),
@@ -231,6 +231,16 @@ async function saveToDatabase(ip, mac, vendor, data) {
   }
 }
 
+function binarytoString(mac) {
+  const buffer = Buffer.from(mac, "binary");
+
+  // Converti il buffer in un array di byte
+  const ba = Array.from(buffer);
+
+  // Formatta l'array di byte come un MAC address
+  return ba.map((byte) => byte.toString(16).padStart(2, "0")).join(":");
+}
+
 app.get("/snmp", async (req, res) => {
   const ip = req.query.ip;
   if (!ip) {
@@ -239,20 +249,21 @@ app.get("/snmp", async (req, res) => {
 
   try {
     const p = await pingus.icmp({ host: ip });
-    log.info(JSON.stringify(p, null, " "));
+    log.debug(JSON.stringify(p, null, " "));
     if (p.status == "timeout") {
       res.status(500).send(`ip ${ip} not online`);
       return;
     }
 
     const udp = await pingus.udp({ host: ip, port: 161 });
-    log.info(JSON.stringify(udp, null, " "));
+    log.debug(JSON.stringify(udp, null, " "));
     if (udp.status != "open") {
       res.status(500).send(`ip ${ip} SNMP disabled ${p.status}`);
       return;
     }
 
     let mac = await arp.toMAC(ip);
+
     // apparati a valle di device cisco ritornano mac mascherati
     if (mac && mac.slice(0, 8) != "00:00:0c") {
       log.info(
@@ -261,8 +272,24 @@ app.get("/snmp", async (req, res) => {
         }`
       );
       brand = vendor[mac.slice(0, 8)];
-      const data = await getSnmpData(ip, vendor[mac.slice(0, 8)]);
+
+      // alcuni brand non hanno inventory -- gestiamo l'eccezione.
+      // ad ora solo lexmark
+      let data = undefined;
+      try {
+        data = await getSnmpData(ip, vendor[mac.slice(0, 8)]);
+      } catch (error) {
+        let vendor_noinv = Object.assign({}, vendor[mac.slice(0, 8)]);
+        delete vendor_noinv.Inventory;
+
+        data = await getSnmpData(ip, vendor_noinv);
+      }
+
+      data.MAC = mac;
+      if(data.MAC2)
+        data.MAC2 = binarytoString(data.MAC2)
       await saveToDatabase(ip, mac, vendor_name[mac.slice(0, 8)], data);
+      data.ip = ip;
       res.json(data);
     } else {
       try {
@@ -277,16 +304,17 @@ app.get("/snmp", async (req, res) => {
         let fw = undefined;
         let brand = undefined;
         fw = await getSnmpData(ip, ["1.3.6.1.2.1.1.1.0"]);
-        log.info(JSON.stringify(fw))
+        log.debug(JSON.stringify(fw));
 
         for (const [b, v] of Object.entries(vendor_check)) {
           try {
+            log.debug(`b=${b}, v=${v}`)
             fw = await getSnmpData(ip, [v]);
-            log.info(`IP ${ip} brand ${b}`);
+            log.debug(`IP ${ip} brand ${b}`);
             brand = b;
             break;
           } catch (wrong_brand) {
-            log.info(`tried ${b} on ip ${ip} no match ${wrong_brand}`);
+            log.warn(`tried ${b} on ip ${ip} no match ${wrong_brand}`);
           }
         }
 
@@ -296,24 +324,34 @@ app.get("/snmp", async (req, res) => {
         }
 
         log.info(`ip: ${ip}, vendor: ${brand || "sconosciuto"}`);
-        const data = await getSnmpData(ip, vendor_oids[brand]);
-        console.log("data: " + data.MAC.length)
-        const buffer = Buffer.from(data.MAC, "binary");
 
-        // Converti il buffer in un array di byte
-        const ba = Array.from(buffer);
+        // alcuni brand non hanno inventory -- gestiamo l'eccezione.
+        // ad ora solo lexmark
+        let data = undefined;
+        try {
+          data = await getSnmpData(ip, vendor_oids[brand]);
+        } catch {
+          let vendor_noinv = Object.assign({}, vendor_oids[brand]);
+          delete vendor_noinv.Inventory;
+          data = await getSnmpData(ip, vendor_noinv);
+        }
 
-        // Formatta l'array di byte come un MAC address
-        mac = ba.map((byte) => byte.toString(16).padStart(2, "0")).join(":");
-        data.MAC = mac;
+        data.MAC = binarytoString(data.MAC);
+        if(data.MAC2)
+          data.MAC2 = binarytoString(data.MAC2);
+        await saveToDatabase(ip, data.MAC, brand, data);
 
-        await saveToDatabase(ip, mac, brand, data);
-
+        data.ip = ip;
         res.json(data);
       } catch (error) {
+        if(error.name == "RequestTimedOutError")
+        {
+          log.info("/snmp " + error);
+          res.status(400).send(error);
+        }          
         log.info("/snmp " + error);
 
-        res.status(400).send("MAC not found");
+        res.status(400).send(error);
       }
     }
   } catch (error) {
@@ -354,7 +392,7 @@ app.get("/scan", async (req, res) => {
     const lastIp = ip.toLong(subnetInfo.lastAddress);
     const results = [];
     const results_allip = [];
-    const no_brand=[];
+    const no_brand = [];
 
     const promises = [];
     for (let longIp = firstIp; longIp <= lastIp; longIp++) {
@@ -387,9 +425,19 @@ app.get("/scan", async (req, res) => {
               let brand = vendor_name[mac.slice(0, 8)];
               results_allip.push(ipAddr);
 
-              const data = await getSnmpData(ipAddr, vendor[mac.slice(0, 8)]);
+              let data = undefined;
+              try {
+                data = await getSnmpData(ipAddr, vendor[mac.slice(0, 8)]);
+              } catch {
+                let vendor_noinv = Object.assign({}, vendor[mac.slice(0, 8)]);
+                delete vendor_noinv.Inventory;
+                data = await getSnmpData(ipAddr, vendor_noinv);
+              }
+
               if (data) {
-                results.push({ ip: ipAddr, MAC: mac, ...data });
+                data.MAC = mac
+
+                results.push({ ip: ipAddr, ...data });
                 await saveToDatabase(ipAddr, mac, brand, data);
               }
             } else {
@@ -410,6 +458,11 @@ app.get("/scan", async (req, res) => {
                     brand = b;
                     break;
                   } catch (wrong_brand) {
+                    if(wrong_brand.name == "RequestTimedOutError")
+                    {
+                      results_allip.push(ipAddr);
+                      return;
+                    }
                     log.info(`tried ${b} on ip ${ipAddr} no match`);
                   }
                 }
@@ -417,11 +470,10 @@ app.get("/scan", async (req, res) => {
 
                 // inserisco l'ip in un array per identificare brand non ancora censiti.
                 // Si possono fare a mano in seguito
-                if (!brand)
-                {
+                if (!brand) {
                   try {
                     fw = await getSnmpData(ipAddr, ["1.3.6.1.2.1.1.1.0"]);
-                    no_brand.push(ipAddr)
+                    no_brand.push(ipAddr);
                   } catch (snmp_ko) {
                     log.info(`${ipAddr} snmp disabled`);
                   }
@@ -429,24 +481,25 @@ app.get("/scan", async (req, res) => {
                 }
                 log.info(`ip: ${ipAddr}, vendor: ${brand || "sconosciuto"}`);
 
-                const data = await getSnmpData(ipAddr, vendor_oids[brand]);
-                const buffer = Buffer.from(data.MAC, "binary");
-4
-                // Converti il buffer in un array di byte
-                const ba = Array.from(buffer);
+                let data = undefined;
+                try {
+                  data = await getSnmpData(ipAddr, vendor_oids[brand]);
+                } catch {
+                  log.debug(ipAddr + " no inventory")
+                  let vendor_noinv = Object.assign({}, vendor_oids[brand]);
+                  delete vendor_noinv.Inventory;
 
-                // Formatta l'array di byte come un MAC address
-                mac = ba
-                  .map((byte) => byte.toString(16).padStart(2, "0"))
-                  .join(":");
-                data.MAC = mac;
-
-                if (data) {
-                  results.push({ ip: ipAddr, ...data });
-                  await saveToDatabase(ipAddr, mac, brand, data);
+                  data = await getSnmpData(ipAddr, vendor_noinv);
                 }
 
-                //res.json(data);
+                if (data) {
+                  data.MAC = binarytoString(data.MAC);
+                  if(data.MAC2)
+                    data.MAC2 = binarytoString(data.MAC2);
+
+                  results.push({ ip: ipAddr, ...data });
+                  await saveToDatabase(ipAddr, data.MAC, brand, data);
+                }
               } catch (error) {
                 log.info("MAC not found " + error);
               }
@@ -464,11 +517,9 @@ app.get("/scan", async (req, res) => {
     log.info(
       `result.len = ${results.length}, allip.len = ${results_allip.length}`
     );
-    log.info(
-      no_brand
-    );
+    log.info("ip con snmp ma senza brand: " + JSON.stringify(no_brand));
 
-    res.json({ results: results, ips: results_allip });
+    res.json({ results: results, ips: results_allip, no_brand: no_brand });
   } catch (error) {
     res.status(500).json({ error: error.toString() });
   }

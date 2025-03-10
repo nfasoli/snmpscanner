@@ -8,3 +8,7 @@ mta-*
 resources
 archive.zip
 .*_mta_build_tmp
+logs/
+mibs/
+package-lock.json
+printer-list/package-lock.json

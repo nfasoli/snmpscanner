@@ -9,13 +9,10 @@
   ],
   "main": "webapp/index.html",
   "dependencies": {
-    "node-arp": "^1.0.6",
-    "ping": "^0.4.4",
-    "printer-list": "file:"
   },
   "devDependencies": {
     "@sap/ux-ui5-tooling": "1",
-    "@ui5/cli": "^3.0.0"
+    "@ui5/cli": "^3.11.6"
   },
   "scripts": {
     "start": "fiori run --open \"test/flpSandbox.html?sap-ui-xx-viewCache=false#comagrintesaprinterlist-display\"",
