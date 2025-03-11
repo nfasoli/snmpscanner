@@ -1,49 +1,145 @@
 <mvc:View controllerName="com.agrintesa.printerlist.controller.PrinterList"
-    xmlns:mvc="sap.ui.core.mvc"
-    xmlns="sap.m">
-    <Page id="page" title="{i18n>title}">
-        <content>
-            <Table id="printerTable" inset="false" items="{/printers}"         growing="true"
-        growingScrollToLoad="true"
-        growingThreshold="1200">
-                <headerToolbar>
-                    <Toolbar id="_IDGenToolbar">
-                        <Title id="_IDGenTitle" text="Printer List" />
-                    </Toolbar>
-                </headerToolbar>
+    xmlns="sap.m"
+    		height="100%"
+		xmlns:mvc="sap.ui.core.mvc"
+		xmlns:core="sap.ui.core"
+		xmlns:f="sap.f"
+		xmlns:fb="sap.ui.comp.filterbar"
+		xmlns:svm="sap.ui.comp.smartvariants">
+		<f:DynamicPage id="_IDGenDynamicPage1" headerExpanded="{/headerExpanded}">
+			<f:title>
+				<f:DynamicPageTitle id="_IDGenDynamicPageTitle">
+					<f:expandedContent>
+						<Label id="expandedLabel" text="Nessun filtro attivo" />
+					</f:expandedContent>
+					<f:snappedContent>
+						<Label id="snappedLabel" text="Nessun filtro attivo" />
+					</f:snappedContent>
+				</f:DynamicPageTitle>
+			</f:title>
+			<f:header>
+				<f:DynamicPageHeader id="_IDGenDynamicPageHeader1">
+					<f:content>
+						<fb:FilterBar id="filterbar" useToolbar="false" search=".onSearch" filterChange=".onFilterChange">
+							<fb:filterGroupItems>
+								<fb:FilterGroupItem id="_IDGenFilterGroupItem" name="Syslocation" label="Syslocation" groupName="Group1" visibleInFilterBar="true">
+									<fb:control>
+										<MultiComboBox id="_IDGenMultiComboBox"
+											name="Syslocation"
+											selectionChange=".onSelectionChange"
+											items="{
+												path: '/syslocation',
+												templateShareable: true
+											}"
+										>
+											<core:Item id="_IDGenItem" key="{syslocation}" text="{syslocation}"/>
+										</MultiComboBox>
+									</fb:control>
+								</fb:FilterGroupItem>
+								<fb:FilterGroupItem id="_IDGenFilterGroupItem1" name="fw" label="Firmware" groupName="Group1" visibleInFilterBar="true">
+									<fb:control>
+										<MultiComboBox id="_IDGenMultiComboBox1"
+											name="fw"
+											selectionChange=".onSelectionChange"
+											items="{
+												path: '/fw',
+												templateShareable: true
+											}"
+										>
+											<core:Item id="_IDGenItem1" key="{FW}" text="{FW}"/>
+										</MultiComboBox>
+									</fb:control>
+								</fb:FilterGroupItem>
+								<fb:FilterGroupItem id="_IDGenFilterGroupItem2" name="Model" label="Model" groupName="Group1" visibleInFilterBar="true">
+									<fb:control>
+										<MultiComboBox id="_IDGenMultiComboBox2"
+											name="Model"
+											selectionChange=".onSelectionChange"
+											items="{
+												path: '/model',
+												templateShareable: true
+											}"
+										>
+											<core:Item id="_IDGenItem2" key="{model}" text="{model}"/>
+										</MultiComboBox>
+									</fb:control>
+								</fb:FilterGroupItem>
+								<fb:FilterGroupItem id="_IDGenFilterGroupItem3" name="vendor" label="Vendor" groupName="Group1" visibleInFilterBar="true">
+									<fb:control>
+										<MultiComboBox id="_IDGenMultiComboBox3"
+											name="Vendor"
+											selectionChange=".onSelectionChange"
+											items="{
+												path: '/vendor',
+												templateShareable: true
+											}"
+										>
+											<core:Item id="_IDGenItem3" key="{vendor}" text="{vendor}"/>
+										</MultiComboBox>
+									</fb:control>
+								</fb:FilterGroupItem>
+							</fb:filterGroupItems>
+                            <fb:filterGroupItems>
+                                <fb:FilterGroupItem id="_IDGenFilterGroupItem22" name="mac" label="mac" groupName="Group2" visibleInFilterBar="true">
+									<fb:control>
+										<Input id="_IDGenInput1" name="serialnumber" change=".onInputChange">
+										</Input>
+									</fb:control>
+								</fb:FilterGroupItem>
+                                <fb:FilterGroupItem id="_IDGenFilterGroupItem23" name="SerialNumber" label="sn" groupName="Group2" visibleInFilterBar="true">
+									<fb:control>
+										<Input id="_IDGenInput2" name="serialnumber" change=".onInputChange">
+										</Input>
+									</fb:control>
+								</fb:FilterGroupItem>
+                                <fb:FilterGroupItem id="_IDGenFilterGroupItem21" name="Hostname" label="Hostname" groupName="Group2" visibleInFilterBar="true">
+									<fb:control>
+										<Input id="_IDGenInput3" name="serialnumber" change=".onInputChange">
+										</Input>
+									</fb:control>
+								</fb:FilterGroupItem>
+							</fb:filterGroupItems>
+						</fb:FilterBar>
+					</f:content>
+				</f:DynamicPageHeader>
+			</f:header>
+			<f:content>
+            <Table id="printerTable" inset="false" items="{/printers}" growing="true"
+                growingScrollToLoad="true"
+                growingThreshold="200">
                 <columns>
-                    <Column id="_IDGenColumn1">
+                    <Column id="_IDGenColumn1" sortIndicator="None">
                         <Text id="_IDGenText" text="IP" />
                     </Column>
-                    <Column id="_IDGenColumn2">
+                    <Column id="_IDGenColumn2" sortIndicator="None">
                         <Text id="_IDGenText1" text="MAC" />
                     </Column>
-                    <Column id="_IDGenColumn3">
+                    <Column id="_IDGenColumn3" sortIndicator="None">
                         <Text id="_IDGenText2" text="Serial Number" />
                     </Column>
-                    <Column id="_IDGenColumn4">
+                    <Column id="_IDGenColumn4" sortIndicator="None">
                         <Text id="_IDGenText3" text="Uptime" />
                     </Column>
-                    <Column id="_IDGenColumn5">
+                    <Column id="_IDGenColumn5" sortIndicator="None">
                         <Text id="_IDGenText4" text="Hostname" />
                     </Column>
-                    <Column id="_IDGenColumn6">
+                    <Column id="_IDGenColumn6" sortIndicator="None">
                         <Text id="_IDGenText5" text="Syslocation" />
                     </Column>
-                    <Column id="_IDGenColumn7">
+                    <Column id="_IDGenColumn7" sortIndicator="None">
                         <Text id="_IDGenText6" text="Inventory" />
                     </Column>
-                    <Column id="_IDGenColumn8">
+                    <Column id="_IDGenColumn8" sortIndicator="None">
                         <Text id="_IDGenText27" text="Model" />
                     </Column>
-                    <Column id="_IDGenColumn9">
+                    <Column id="_IDGenColumn9" sortIndicator="None">
                         <Text id="_IDGenText18" text="FW" />
                     </Column>
-                    <Column id="_IDGenColumn10">
+                    <Column id="_IDGenColumn10" sortIndicator="None">
                         <Text id="_IDGenText19" text="vendor" />
                     </Column>
-                    <Column id="_IDGenColumn11">
-                        <Text id="_IDGenText20" text="formatted_date"/>
+                    <Column id="_IDGenColumn11" sortIndicator="None">
+                        <Text id="_IDGenText20" text="lastupd"/>
                     </Column>
                 </columns>
                 <items>
@@ -64,5 +160,6 @@
                     </ColumnListItem>
                 </items>
             </Table>
-        </content>    </Page>
+			</f:content>
+		</f:DynamicPage>
 </mvc:View>

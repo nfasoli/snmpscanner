@@ -24,7 +24,7 @@ const zebra_oids = {
   Model: "1.3.6.1.2.1.25.3.2.1.3.1",
   FW: "1.3.6.1.4.1.10642.1.7.0",
   MAC: "1.3.6.1.2.1.2.2.1.6.2",
-  MAC2: "1.3.6.1.2.1.2.2.1.6.3"
+  MAC2: "1.3.6.1.2.1.2.2.1.6.3",
 };
 
 const ricoh_oids = {
@@ -150,7 +150,9 @@ async function getSnmpData(ip, vendor, community = "public") {
     const session = snmp.createSession(ip, community);
 
     session.get(Object.values(vendor), (error, varbinds) => {
-      log.debug(`ip: ${ip}, error: ${error}, varbinds: ${JSON.stringify(varbinds)}`);
+      log.debug(
+        `ip: ${ip}, error: ${error}, varbinds: ${JSON.stringify(varbinds)}`
+      );
       if (error) {
         // se lexmark è probabile che l'oid dell'inventario non venga gradito
         // facciamo la scansione a mano
@@ -286,8 +288,7 @@ app.get("/snmp", async (req, res) => {
       }
 
       data.MAC = mac;
-      if(data.MAC2)
-        data.MAC2 = binarytoString(data.MAC2)
+      if (data.MAC2) data.MAC2 = binarytoString(data.MAC2);
       await saveToDatabase(ip, mac, vendor_name[mac.slice(0, 8)], data);
       data.ip = ip;
       res.json(data);
@@ -308,7 +309,7 @@ app.get("/snmp", async (req, res) => {
 
         for (const [b, v] of Object.entries(vendor_check)) {
           try {
-            log.debug(`b=${b}, v=${v}`)
+            log.debug(`b=${b}, v=${v}`);
             fw = await getSnmpData(ip, [v]);
             log.debug(`IP ${ip} brand ${b}`);
             brand = b;
@@ -337,18 +338,16 @@ app.get("/snmp", async (req, res) => {
         }
 
         data.MAC = binarytoString(data.MAC);
-        if(data.MAC2)
-          data.MAC2 = binarytoString(data.MAC2);
+        if (data.MAC2) data.MAC2 = binarytoString(data.MAC2);
         await saveToDatabase(ip, data.MAC, brand, data);
 
         data.ip = ip;
         res.json(data);
       } catch (error) {
-        if(error.name == "RequestTimedOutError")
-        {
+        if (error.name == "RequestTimedOutError") {
           log.info("/snmp " + error);
           res.status(400).send(error);
-        }          
+        }
         log.info("/snmp " + error);
 
         res.status(400).send(error);
@@ -435,7 +434,7 @@ app.get("/scan", async (req, res) => {
               }
 
               if (data) {
-                data.MAC = mac
+                data.MAC = mac;
 
                 results.push({ ip: ipAddr, ...data });
                 await saveToDatabase(ipAddr, mac, brand, data);
@@ -458,8 +457,7 @@ app.get("/scan", async (req, res) => {
                     brand = b;
                     break;
                   } catch (wrong_brand) {
-                    if(wrong_brand.name == "RequestTimedOutError")
-                    {
+                    if (wrong_brand.name == "RequestTimedOutError") {
                       results_allip.push(ipAddr);
                       return;
                     }
@@ -485,7 +483,7 @@ app.get("/scan", async (req, res) => {
                 try {
                   data = await getSnmpData(ipAddr, vendor_oids[brand]);
                 } catch {
-                  log.debug(ipAddr + " no inventory")
+                  log.debug(ipAddr + " no inventory");
                   let vendor_noinv = Object.assign({}, vendor_oids[brand]);
                   delete vendor_noinv.Inventory;
 
@@ -494,8 +492,7 @@ app.get("/scan", async (req, res) => {
 
                 if (data) {
                   data.MAC = binarytoString(data.MAC);
-                  if(data.MAC2)
-                    data.MAC2 = binarytoString(data.MAC2);
+                  if (data.MAC2) data.MAC2 = binarytoString(data.MAC2);
 
                   results.push({ ip: ipAddr, ...data });
                   await saveToDatabase(ipAddr, data.MAC, brand, data);
@@ -529,11 +526,32 @@ app.get("/getall", async (req, res) => {
   const connection = await mysql.createConnection(dbConfig);
 
   try {
-    const query = `SELECT *, DATE_FORMAT(lastupd, '%H:%i:%s %d-%m-%y') AS formatted_date from printers.printer order by ip`;
+    const query = `SELECT *, DATE_FORMAT(lastupd, '%H:%i:%s %d-%m-%y') AS formatted_date, DATE_FORMAT(firstseen, '%H:%i:%s %d-%m-%y') AS firstseen
+                   from printers.printer order by ip`;
+    const syslocation = `select syslocation from printer group by syslocation order by syslocation`;
+    const fw = `select FW from printer group by FW order by FW`;
+    const model = `select model from printer group by model order by model`;
+    // const lastupdate = `select syslocation from printer group by syslocation order by syslocation`;
+    const vendor = `select vendor from printer group by vendor order by vendor`;
+    // const firstseen = `select model from printer group by model order by model`;
+    const count = `SELECT count(*) as count FROM printers.printer;`;
 
+    const [syslocation_rows, fields1] = await connection.query(syslocation);
+    const [fw_rows, fields2] = await connection.query(fw);
+    const [model_rows, fields3] = await connection.query(model);
+    const [vendor_rows, fields4] = await connection.query(vendor);
+    const [count_rows, fields5] = await connection.query(count);
     const [rows, fields] = await connection.query(query);
 
-    res.json(rows);
+    res.json({
+      printers: rows,
+      syslocation: syslocation_rows,
+      fw: fw_rows,
+      model: model_rows,
+      vendor: vendor_rows,
+      count: count_rows,
+    });
+
   } catch (error) {
     log.info(error);
     res.status(500).json({ error: error.toString() });
@@ -541,6 +559,38 @@ app.get("/getall", async (req, res) => {
     await connection.end();
   }
 });
+
+/* app.get("/getunique", async (req, res) => {
+  const connection = await mysql.createConnection(dbConfig);
+
+  try {
+    const syslocation = `select syslocation from printer group by syslocation order by syslocation`;
+    const fw = `select FW from printer group by FW order by FW`;
+    const model = `select model from printer group by model order by model`;
+    // const lastupdate = `select syslocation from printer group by syslocation order by syslocation`;
+    const vendor = `select vendor from printer group by vendor order by vendor`;
+    // const firstseen = `select model from printer group by model order by model`;
+    const count = `SELECT count(*) as count FROM printers.printer;`;
+    const [syslocation_rows, fields1] = await connection.query(syslocation);
+    const [fw_rows, fields2] = await connection.query(fw);
+    const [model_rows, fields3] = await connection.query(model);
+    const [vendor_rows, fields4] = await connection.query(vendor);
+    const [count_rows, fields5] = await connection.query(count);
+
+    res.json({
+      syslocation: syslocation_rows,
+      fw: fw_rows,
+      model: model_rows,
+      vendor: vendor_rows,
+      count: count_rows,
+    });
+  } catch (error) {
+    log.info(error);
+    res.status(500).json({ error: error.toString() });
+  } finally {
+    await connection.end();
+  }
+}); */
 
 app.listen(port, () => {
   log.info(`Server running at http://localhost:${port}/`);
