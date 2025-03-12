@@ -1,0 +1,31 @@
+<core:FragmentDefinition xmlns="sap.m" xmlns:core="sap.ui.core">
+    <Dialog id="subnetDialog"  title="Subnets Configurate e scansionate">
+        <content>
+            <Table id="subnetTable" width="50%" items="{/subnet}">
+                <columns>
+                    <Column id="_IDGenColumn14">
+                        <Text id="_IDGenText25" text="Subnet" />
+                    </Column>
+                    <Column id="_IDGenColumn15">
+                        <Text id="_IDGenText26" text="Mask" />
+                    </Column>
+                    <Column id="_IDGenColumn16">
+                        <Text id="_IDGenText30" text="Nome" />
+                    </Column>
+                </columns>
+                <items>
+                    <ColumnListItem id="_IDGenColumnListItem1">
+                        <cells>
+                            <Text id="_IDGenText28" text="{subnet}" />
+                            <Text id="_IDGenText29" text="{mask}" />
+                            <Text id="_IDGenText31" text="{name}" />
+                        </cells>
+                    </ColumnListItem>
+                </items>
+            </Table>
+        </content>
+        <endButton>
+            <Button id="_IDGenButton4" text="Close" press="onCloseDialog"/>
+        </endButton>
+    </Dialog>
+</core:FragmentDefinition>

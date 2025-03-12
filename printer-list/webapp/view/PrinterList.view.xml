@@ -1,6 +1,6 @@
 <mvc:View controllerName="com.agrintesa.printerlist.controller.PrinterList"
     xmlns="sap.m"
-    		height="100%"
+    	height="98%"
 		xmlns:mvc="sap.ui.core.mvc"
 		xmlns:core="sap.ui.core"
 		xmlns:f="sap.f"
@@ -15,6 +15,13 @@
 					<f:snappedContent>
 						<Label id="snappedLabel" text="Nessun filtro attivo" />
 					</f:snappedContent>
+                    <f:actions>
+                        <Text id="_IDGenText21" text="{/count/0/count} dispositivi trovati"/>
+
+                        <Button id="_IDGenButton" text="Aggiorna" type="Transparent" press="onUpdatePress"/>
+                        <Button id="_IDGenButton1" text="Scansione Custom" press="onCustomScanPress"/>
+                        <Button id="_IDGenButton2" text="Mostra Subnet" press="onOpenDialog"/>
+                    </f:actions>                    
 				</f:DynamicPageTitle>
 			</f:title>
 			<f:header>
@@ -36,7 +43,7 @@
 										</MultiComboBox>
 									</fb:control>
 								</fb:FilterGroupItem>
-								<fb:FilterGroupItem id="_IDGenFilterGroupItem1" name="fw" label="Firmware" groupName="Group1" visibleInFilterBar="true">
+								<fb:FilterGroupItem id="_IDGenFilterGroupItem1" name="FW" label="Firmware" groupName="Group1" visibleInFilterBar="true">
 									<fb:control>
 										<MultiComboBox id="_IDGenMultiComboBox1"
 											name="fw"
@@ -80,9 +87,9 @@
 								</fb:FilterGroupItem>
 							</fb:filterGroupItems>
                             <fb:filterGroupItems>
-                                <fb:FilterGroupItem id="_IDGenFilterGroupItem22" name="mac" label="mac" groupName="Group2" visibleInFilterBar="true">
+                                <fb:FilterGroupItem id="_IDGenFilterGroupItem22" name="MAC" label="mac" groupName="Group2" visibleInFilterBar="true">
 									<fb:control>
-										<Input id="_IDGenInput1" name="serialnumber" change=".onInputChange">
+										<Input id="_IDGenInput1" name="mac" change=".onInputChange">
 										</Input>
 									</fb:control>
 								</fb:FilterGroupItem>
@@ -94,7 +101,7 @@
 								</fb:FilterGroupItem>
                                 <fb:FilterGroupItem id="_IDGenFilterGroupItem21" name="Hostname" label="Hostname" groupName="Group2" visibleInFilterBar="true">
 									<fb:control>
-										<Input id="_IDGenInput3" name="serialnumber" change=".onInputChange">
+										<Input id="_IDGenInput3" name="HostName" change=".onInputChange">
 										</Input>
 									</fb:control>
 								</fb:FilterGroupItem>

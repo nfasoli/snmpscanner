@@ -7,12 +7,40 @@ const arp = require("@network-utils/arp-lookup");
 const pingus = require("pingus");
 const mysql = require("mysql2/promise");
 const log = require("./utilities/logger.js");
+const http = require('http');
+const WebSocket = require('ws');
 
 const app = express();
 const cors = require("cors");
 
 app.use(cors());
 const port = 5000;
+
+const server = http.createServer(app);
+const wss = new WebSocket.Server({ server });
+
+// Gestisci le connessioni WebSocket
+wss.on('connection', (ws) => {
+  log.info('Client connected');
+
+  ws.on('message', (message) => {
+      log.info(`Received: ${message}`);
+      const data = JSON.parse(message);
+      if (data.action === 'reload') {
+          log.info('Reload action received');
+          // Esegui l'operazione di ricarica e invia i nuovi dati al client
+          const newData = { response: "token"};
+          ws.send(JSON.stringify(newData));
+      }
+
+      // Invia una risposta al client
+      // ws.send('Message received');
+  });
+
+  ws.on('close', () => {
+      log.info('Client disconnected');
+  });
+});
 
 const mac_prefix = "1.3.6.1.2.1.2.2.1.6";
 const zebra_oids = {
@@ -535,13 +563,14 @@ app.get("/getall", async (req, res) => {
     const vendor = `select vendor from printer group by vendor order by vendor`;
     // const firstseen = `select model from printer group by model order by model`;
     const count = `SELECT count(*) as count FROM printers.printer;`;
-
+    const subnet = `SELECT * from printers.subnet order by subnet`;
     const [syslocation_rows, fields1] = await connection.query(syslocation);
     const [fw_rows, fields2] = await connection.query(fw);
     const [model_rows, fields3] = await connection.query(model);
     const [vendor_rows, fields4] = await connection.query(vendor);
     const [count_rows, fields5] = await connection.query(count);
     const [rows, fields] = await connection.query(query);
+    const [subnet_rows, fields6] = await connection.query(subnet);
 
     res.json({
       printers: rows,
@@ -550,8 +579,8 @@ app.get("/getall", async (req, res) => {
       model: model_rows,
       vendor: vendor_rows,
       count: count_rows,
+      subnet: subnet_rows,
     });
-
   } catch (error) {
     log.info(error);
     res.status(500).json({ error: error.toString() });
@@ -560,38 +589,7 @@ app.get("/getall", async (req, res) => {
   }
 });
 
-/* app.get("/getunique", async (req, res) => {
-  const connection = await mysql.createConnection(dbConfig);
-
-  try {
-    const syslocation = `select syslocation from printer group by syslocation order by syslocation`;
-    const fw = `select FW from printer group by FW order by FW`;
-    const model = `select model from printer group by model order by model`;
-    // const lastupdate = `select syslocation from printer group by syslocation order by syslocation`;
-    const vendor = `select vendor from printer group by vendor order by vendor`;
-    // const firstseen = `select model from printer group by model order by model`;
-    const count = `SELECT count(*) as count FROM printers.printer;`;
-    const [syslocation_rows, fields1] = await connection.query(syslocation);
-    const [fw_rows, fields2] = await connection.query(fw);
-    const [model_rows, fields3] = await connection.query(model);
-    const [vendor_rows, fields4] = await connection.query(vendor);
-    const [count_rows, fields5] = await connection.query(count);
-
-    res.json({
-      syslocation: syslocation_rows,
-      fw: fw_rows,
-      model: model_rows,
-      vendor: vendor_rows,
-      count: count_rows,
-    });
-  } catch (error) {
-    log.info(error);
-    res.status(500).json({ error: error.toString() });
-  } finally {
-    await connection.end();
-  }
-}); */
-
-app.listen(port, () => {
-  log.info(`Server running at http://localhost:${port}/`);
+// Avvia il server sulla porta 5000
+server.listen(5000, () => {
+  log.info('Server is listening on port 5000');
 });

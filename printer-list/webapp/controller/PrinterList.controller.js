@@ -4,8 +4,9 @@ sap.ui.define(
     "sap/ui/model/json/JSONModel",
     "sap/ui/model/Filter",
     "sap/ui/model/FilterOperator",
+    "sap/ui/core/Fragment",
   ],
-  (Controller, JSONModel, Filter, FilterOperator) => {
+  (Controller, JSONModel, Filter, FilterOperator, Fragment) => {
     "use strict";
 
     return Controller.extend(
@@ -15,9 +16,36 @@ sap.ui.define(
           // Crea un modello JSON vuoto
           var oModel = new JSONModel();
           this.getView().setModel(oModel);
+          let that = this;
 
           // Recupera i dati dalla sorgente
           this._loadData();
+
+          // Configura il WebSocket
+          this.socket = new WebSocket("ws://localhost:5000");
+
+          // Gestisci i messaggi ricevuti
+          this.socket.onmessage = function (event) {
+            console.log("message received: " + JSON.stringify(event))
+            var newData = JSON.parse(event.data);
+            console.log(that)
+            if(newData.response == 'token') 
+                that.byId("_IDGenButton2").setText("prova")
+           // oModel.setData(newData);
+           // oModel.refresh(); // Rinfresca la tabella
+          };
+
+          // Gestisci eventuali errori
+          this.socket.onerror = function (error) {
+            console.error("WebSocket Error: ", error);
+          };
+
+          // Chiudi la connessione quando la vista viene distrutta
+          this.getView().addEventDelegate({
+            onBeforeHide: function () {
+              socket.close();
+            },
+          });
         },
 
         _loadData() {
@@ -72,7 +100,20 @@ sap.ui.define(
           this.oTable = null;
         },
 
+        onUpdatePress: function () {
+          this._loadData();
+        },
+        onCustomScanPress: function () {
+          console.log("onCustomScanPress");
+          // Invia il messaggio "reload" al backend tramite WebSocket
+          if (this.socket && this.socket.readyState === WebSocket.OPEN) {
+            this.socket.send(JSON.stringify({ action: "reload" }));
+          } else {
+            console.error("WebSocket is not open");
+          }
+        },
         fetchData: function () {
+          console.log("fetchData");
           var aData = this.oFilterBar
             .getAllFilterItems()
             .reduce(function (aResult, oFilterItem) {
@@ -89,6 +130,8 @@ sap.ui.define(
         },
 
         applyData: function (aData) {
+          console.log("applyData");
+
           aData.forEach(function (oDataObject) {
             var oControl = this.oFilterBar.determineControlByName(
               oDataObject.fieldName,
@@ -119,13 +162,12 @@ sap.ui.define(
 
           return aFiltersWithValue;
         },
-
-        onSelectionChange: function (oEvent) {
+        onInputChange: function (oEvent) {
           //  this.oSmartVariantManagement.currentVariantSetModified(true);
           this.oFilterBar.fireFilterChange(oEvent);
         },
 
-        onInputChange: function (oEvent) {
+        onSelectionChange: function (oEvent) {
           //  this.oSmartVariantManagement.currentVariantSetModified(true);
           this.oFilterBar.fireFilterChange(oEvent);
         },
@@ -136,10 +178,8 @@ sap.ui.define(
             .getFilterGroupItems()
             .reduce(function (aResult, oFilterGroupItem) {
               console.log("oFilterGroupItem: " + oFilterGroupItem);
-              console.log(
-                "oFilterGroupItem.getControl(): " +
-                  oFilterGroupItem.getGroupName()
-              );
+
+              var aFilters = [];
               if (oFilterGroupItem.getGroupName() == "Group1") {
                 console.log(
                   "aSelectedKeys: " +
@@ -147,31 +187,58 @@ sap.ui.define(
                 );
 
                 var oControl = oFilterGroupItem.getControl(),
-                  aSelectedKeys = oControl.getSelectedKeys(),
-                  aFilters = aSelectedKeys.map(function (sSelectedKey) {
-                    console.log("3 " + sSelectedKey);
-                    var f = new Filter({
-                      path: oFilterGroupItem.getName(),
-                      operator: FilterOperator.Contains,
-                      value1: sSelectedKey,
-                    });
-                    console.log("f: " + JSON.stringify(f));
-                    return new Filter({
-                      path: oFilterGroupItem.getName(),
-                      operator: FilterOperator.Contains,
-                      value1: sSelectedKey,
-                    });
+                  aSelectedKeys = oControl.getSelectedKeys();
+                aFilters = aSelectedKeys.map(function (sSelectedKey) {
+                  var f = new Filter({
+                    path: oFilterGroupItem.getName(),
+                    operator: FilterOperator.Contains,
+                    value1: sSelectedKey,
                   });
+                  console.log(JSON.stringify(f));
+                  return new Filter({
+                    path: oFilterGroupItem.getName(),
+                    operator: FilterOperator.Contains,
+                    value1: sSelectedKey,
+                  });
+                });
+
+                if (aSelectedKeys && aSelectedKeys.length > 0) {
+                  aResult.push(
+                    new Filter({
+                      filters: aFilters,
+                      and: false,
+                    })
+                  );
+                }
+              } else if (oFilterGroupItem.getGroupName() == "Group2") {
+                console.log(
+                  "aValue: " + oFilterGroupItem.getControl().getValue()
+                );
+
+                var oControl = oFilterGroupItem.getControl(),
+                  aValue = oControl.getValue();
+
+                if (aValue && aValue.length > 0) {
+                  aFilters.push(
+                    new Filter({
+                      path: oFilterGroupItem.getName(),
+                      operator: FilterOperator.Contains,
+                      value1: aValue,
+                    })
+                  );
+                  console.log(aFilters, aValue);
+
+                  aResult.push(
+                    new Filter({
+                      filters: aFilters,
+                      and: false,
+                    })
+                  );
+                }
+              } else {
+                console.log(oFilterGroupItem.getGroupName() + " non definito");
               }
               console.log("aFilters: " + JSON.stringify(aFilters));
-              if (aSelectedKeys && aSelectedKeys.length > 0) {
-                aResult.push(
-                  new Filter({
-                    filters: aFilters,
-                    and: false,
-                  })
-                );
-              }
 
               return aResult;
             }, []);
@@ -189,6 +256,7 @@ sap.ui.define(
         },
 
         getFormattedSummaryText: function () {
+          console.log("getFormattedSummaryText");
           var aFiltersWithValues = this.oFilterBar.retrieveFiltersWithValues();
 
           if (aFiltersWithValues.length === 0) {
@@ -211,6 +279,7 @@ sap.ui.define(
         },
 
         getFormattedSummaryTextExpanded: function () {
+          console.log("getFormattedSummaryTextExpanded");
           var aFiltersWithValues = this.oFilterBar.retrieveFiltersWithValues();
           console.log("getFormattedSummaryTextExpanded " + aFiltersWithValues);
           if (aFiltersWithValues.length === 0) {
@@ -222,7 +291,7 @@ sap.ui.define(
               this.oFilterBar.retrieveNonVisibleFiltersWithValues();
 
           if (aFiltersWithValues.length === 1) {
-            sText = aFiltersWithValues.length + " filtri attivi";
+            sText = aFiltersWithValues.length + " filtro attivo";
           }
 
           if (
@@ -240,6 +309,27 @@ sap.ui.define(
           this.oExpandedLabel.setText(this.getFormattedSummaryTextExpanded());
           this.oSnappedLabel.setText(this.getFormattedSummaryText());
           this.oTable.setShowOverlay(true);
+        },
+
+        onOpenDialog: function () {
+          var oView = this.getView();
+          var oDialog = oView.byId("subnetDialog");
+          if (!oDialog) {
+            Fragment.load({
+              id: oView.getId(),
+              name: "com.agrintesa.printerlist.view.SubnetDialog",
+              controller: this,
+            }).then(function (oDialog) {
+              oView.addDependent(oDialog);
+              oDialog.open();
+            });
+          } else {
+            oDialog.open();
+          }
+        },
+
+        onCloseDialog: function () {
+          this.byId("subnetDialog").close();
         },
       }
     );
