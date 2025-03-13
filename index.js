@@ -7,8 +7,8 @@ const arp = require("@network-utils/arp-lookup");
 const pingus = require("pingus");
 const mysql = require("mysql2/promise");
 const log = require("./utilities/logger.js");
-const http = require('http');
-const WebSocket = require('ws');
+const http = require("http");
+const WebSocket = require("ws");
 
 const app = express();
 const cors = require("cors");
@@ -20,25 +20,25 @@ const server = http.createServer(app);
 const wss = new WebSocket.Server({ server });
 
 // Gestisci le connessioni WebSocket
-wss.on('connection', (ws) => {
-  log.info('Client connected');
+wss.on("connection", (ws) => {
+  log.info("Client connected");
 
-  ws.on('message', (message) => {
-      log.info(`Received: ${message}`);
-      const data = JSON.parse(message);
-      if (data.action === 'reload') {
-          log.info('Reload action received');
-          // Esegui l'operazione di ricarica e invia i nuovi dati al client
-          const newData = { response: "token"};
-          ws.send(JSON.stringify(newData));
-      }
+  ws.on("message", (message) => {
+    log.info(`Received: ${message}`);
+    const data = JSON.parse(message);
+    if (data.action === "reload") {
+      log.info("Reload action received");
+      // Esegui l'operazione di ricarica e invia i nuovi dati al client
+      const newData = { response: "token" };
+      ws.send(JSON.stringify(newData));
+    }
 
-      // Invia una risposta al client
-      // ws.send('Message received');
+    // Invia una risposta al client
+    // ws.send('Message received');
   });
 
-  ws.on('close', () => {
-      log.info('Client disconnected');
+  ws.on("close", () => {
+    log.info("Client disconnected");
   });
 });
 
@@ -53,6 +53,7 @@ const zebra_oids = {
   FW: "1.3.6.1.4.1.10642.1.7.0",
   MAC: "1.3.6.1.2.1.2.2.1.6.2",
   MAC2: "1.3.6.1.2.1.2.2.1.6.3",
+  sysDescr: "1.3.6.1.2.1.1.1.0",
 };
 
 const ricoh_oids = {
@@ -64,6 +65,7 @@ const ricoh_oids = {
   Model: "1.3.6.1.2.1.25.3.2.1.3.1",
   FW: "1.3.6.1.4.1.367.3.2.1.1.1.2.0",
   MAC: "1.3.6.1.2.1.2.2.1.6.1",
+  sysDescr: "1.3.6.1.2.1.1.1.0",
 };
 
 const toshiba_oids = {
@@ -75,6 +77,7 @@ const toshiba_oids = {
   Model: "1.3.6.1.2.1.25.3.2.1.3.1",
   FW: "1.3.6.1.4.1.1129.1.2.1.1.1.1.2.0",
   MAC: "1.3.6.1.2.1.2.2.1.6.2",
+  sysDescr: "1.3.6.1.2.1.1.1.0",
 };
 
 const lexmark_oids = {
@@ -87,6 +90,7 @@ const lexmark_oids = {
   FW: "1.3.6.1.4.1.641.2.1.2.1.4.1",
   MAC2: "1.3.6.1.2.1.2.2.1.6.1",
   MAC: "1.3.6.1.2.1.2.2.1.6.2",
+  sysDescr: "1.3.6.1.2.1.1.1.0",
 };
 
 const vendor_check = {
@@ -215,7 +219,41 @@ async function getSnmpData(ip, vendor, community = "public") {
   });
 }
 
-async function saveToDatabase(ip, mac, vendor, data) {
+async function saveToIPTable(ip_array) {
+  log.info("saveToIPTable: "); // + JSON.stringify(ip_array) )
+  const connection = await mysql.createConnection(dbConfig);
+  try {
+    ip_array.forEach(async (e) => {
+      const query = `
+      INSERT INTO ip (ip, mac, subnet, snmp, sysDescr, firstseen, lastupd )
+      VALUES (?, ?, (SELECT subnet.id
+      FROM subnet
+      WHERE subnet.subnet = ?), ?, ?, NOW(), NOW())
+      ON DUPLICATE KEY UPDATE
+         snmp = VALUES(snmp),
+         sysDescr = VALUES(sysDescr),
+         lastupd = NOW();
+    `;
+
+      log.debug(`ip: ${JSON.stringify(e)}`);
+      await connection.execute(query, [
+        e.ip,
+        e.mac,
+        e.subnet,
+        e.snmp,
+        e.sysDescr,
+      ]);
+      log.info("Data for ip " + e.ip + " saved to database");
+    });
+  } catch (err) {
+    console.error("Error saving ip " + ip + " to database:", err);
+    throw err;
+  } finally {
+    await connection.end();
+  }
+}
+
+async function saveToPrinterTable(ip, mac, vendor, data) {
   const connection = await mysql.createConnection(dbConfig);
   log.info("saveToDatabase init " + JSON.stringify(data));
   try {
@@ -317,7 +355,7 @@ app.get("/snmp", async (req, res) => {
 
       data.MAC = mac;
       if (data.MAC2) data.MAC2 = binarytoString(data.MAC2);
-      await saveToDatabase(ip, mac, vendor_name[mac.slice(0, 8)], data);
+      await saveToPrinterTable(ip, mac, vendor_name[mac.slice(0, 8)], data);
       data.ip = ip;
       res.json(data);
     } else {
@@ -367,7 +405,7 @@ app.get("/snmp", async (req, res) => {
 
         data.MAC = binarytoString(data.MAC);
         if (data.MAC2) data.MAC2 = binarytoString(data.MAC2);
-        await saveToDatabase(ip, data.MAC, brand, data);
+        await saveToPrinterTable(ip, data.MAC, brand, data);
 
         data.ip = ip;
         res.json(data);
@@ -418,8 +456,8 @@ app.get("/scan", async (req, res) => {
     const firstIp = ip.toLong(subnetInfo.firstAddress);
     const lastIp = ip.toLong(subnetInfo.lastAddress);
     const results = [];
-    const results_allip = [];
-    const no_brand = [];
+    const ip_array = [];
+    // const no_brand = [];
 
     const promises = [];
     for (let longIp = firstIp; longIp <= lastIp; longIp++) {
@@ -450,7 +488,31 @@ app.get("/scan", async (req, res) => {
                 }`
               );
               let brand = vendor_name[mac.slice(0, 8)];
-              results_allip.push(ipAddr);
+
+              // inserisco l'ip in un array per identificare brand non ancora censiti.
+              // Si possono fare a mano in seguito
+              if (!brand) {
+                try {
+                  fw = await getSnmpData(ipAddr, ["1.3.6.1.2.1.1.1.0"]);
+                  ip_array.push({
+                    ip: ipAddr,
+                    mac: mac,
+                    subnet: subnet,
+                    snmp: true,
+                    sysDescr: fw,
+                  });
+                } catch (snmp_ko) {
+                  log.info(`${ipAddr} snmp disabled`);
+                  ip_array.push({
+                    ip: ipAddr,
+                    mac: mac,
+                    subnet: subnet,
+                    snmp: false,
+                    sysDescr: null,
+                  });
+                }
+                return;
+              }
 
               let data = undefined;
               try {
@@ -458,15 +520,42 @@ app.get("/scan", async (req, res) => {
               } catch {
                 let vendor_noinv = Object.assign({}, vendor[mac.slice(0, 8)]);
                 delete vendor_noinv.Inventory;
-                data = await getSnmpData(ipAddr, vendor_noinv);
+                try {
+                  data = await getSnmpData(ipAddr, vendor_noinv);
+                } catch (err) {
+                  // siamo in un caso dove il brand stampante è noto, ma snmp disabilitato
+                  log.info("printer with ip=" + ipAddr + " " + vendor[mac.slice(0, 8)] + " snmp disabled")
+                  ip_array.push({
+                    ip: ipAddr,
+                    mac: mac,
+                    subnet: subnet,
+                    snmp: false,
+                    sysDescr: vendor_name[mac.slice(0, 8)],
+                  });
+                  return;
+                }
               }
 
               if (data) {
                 data.MAC = mac;
 
+                ip_array.push({
+                  ip: ipAddr,
+                  mac: mac,
+                  subnet: subnet,
+                  snmp: true,
+                  sysDescr: data.sysDescr,
+                });
                 results.push({ ip: ipAddr, ...data });
-                await saveToDatabase(ipAddr, mac, brand, data);
-              }
+                await saveToPrinterTable(ipAddr, mac, brand, data);
+              } else
+                ip_array.push({
+                  ip: ipAddr,
+                  mac: mac,
+                  subnet: subnet,
+                  snmp: false,
+                  sysDescr: null,
+                });
             } else {
               try {
                 log.info("IP outside subnet: going for SNMP: " + ipAddr);
@@ -486,22 +575,40 @@ app.get("/scan", async (req, res) => {
                     break;
                   } catch (wrong_brand) {
                     if (wrong_brand.name == "RequestTimedOutError") {
-                      results_allip.push(ipAddr);
+                      ip_array.push({
+                        ip: ipAddr,
+                        mac: null,
+                        subnet: subnet,
+                        snmp: false,
+                        sysDescr: null,
+                      });
                       return;
                     }
                     log.info(`tried ${b} on ip ${ipAddr} no match`);
                   }
                 }
-                results_allip.push(ipAddr);
 
                 // inserisco l'ip in un array per identificare brand non ancora censiti.
                 // Si possono fare a mano in seguito
                 if (!brand) {
                   try {
                     fw = await getSnmpData(ipAddr, ["1.3.6.1.2.1.1.1.0"]);
-                    no_brand.push(ipAddr);
+                    ip_array.push({
+                      ip: ipAddr,
+                      mac: null,
+                      subnet: subnet,
+                      snmp: true,
+                      sysDescr: fw,
+                    });
                   } catch (snmp_ko) {
                     log.info(`${ipAddr} snmp disabled`);
+                    ip_array.push({
+                      ip: ipAddr,
+                      mac: null,
+                      subnet: subnet,
+                      snmp: false,
+                      sysDescr: null,
+                    });
                   }
                   return;
                 }
@@ -522,15 +629,22 @@ app.get("/scan", async (req, res) => {
                   data.MAC = binarytoString(data.MAC);
                   if (data.MAC2) data.MAC2 = binarytoString(data.MAC2);
 
+                  ip_array.push({
+                    ip: ipAddr,
+                    mac: null,
+                    subnet: subnet,
+                    snmp: true,
+                    sysDescr: data.sysDescr,
+                  });
                   results.push({ ip: ipAddr, ...data });
-                  await saveToDatabase(ipAddr, data.MAC, brand, data);
+                  await saveToPrinterTable(ipAddr, data.MAC, brand, data);
                 }
               } catch (error) {
-                log.info("MAC not found " + error);
+                log.error("Errore generico " + error);
               }
             }
           } catch (error) {
-            log.info(
+            log.error(
               "IP " + ipAddr + " outside subnet: errore generico " + error
             );
           }
@@ -540,11 +654,12 @@ app.get("/scan", async (req, res) => {
 
     await Promise.all(promises);
     log.info(
-      `result.len = ${results.length}, allip.len = ${results_allip.length}`
+      `result.len = ${results.length}, ip_array.len = ${ip_array.length}`
     );
-    log.info("ip con snmp ma senza brand: " + JSON.stringify(no_brand));
+    //log.info("ip con snmp ma senza brand: " + JSON.stringify(no_brand));
+    await saveToIPTable(ip_array);
 
-    res.json({ results: results, ips: results_allip, no_brand: no_brand });
+    res.json({ results: results, ips: ip_array });
   } catch (error) {
     res.status(500).json({ error: error.toString() });
   }
@@ -563,7 +678,7 @@ app.get("/getall", async (req, res) => {
     const vendor = `select vendor from printer group by vendor order by vendor`;
     // const firstseen = `select model from printer group by model order by model`;
     const count = `SELECT count(*) as count FROM printers.printer;`;
-    const subnet = `SELECT * from printers.subnet order by subnet`;
+    const subnet = `SELECT * from printers.subnet order by inet_aton(subnet)`;
     const [syslocation_rows, fields1] = await connection.query(syslocation);
     const [fw_rows, fields2] = await connection.query(fw);
     const [model_rows, fields3] = await connection.query(model);
@@ -591,5 +706,5 @@ app.get("/getall", async (req, res) => {
 
 // Avvia il server sulla porta 5000
 server.listen(5000, () => {
-  log.info('Server is listening on port 5000');
+  log.info("Server is listening on port 5000");
 });
