@@ -31,6 +31,9 @@ wss.on("connection", (ws) => {
       // Esegui l'operazione di ricarica e invia i nuovi dati al client
       const newData = { response: "token" };
       ws.send(JSON.stringify(newData));
+    } else if (data.action === "scan") {
+      log.info("Scan for " + data.oData.subnet + " action received");
+      ws.send(JSON.stringify({response: "scan", subnet: data.oData.subnet}));
     }
 
     // Invia una risposta al client
@@ -451,6 +454,7 @@ app.get("/scan", async (req, res) => {
     return res.status(400).json({ error: "Subnet and netmask are required" });
   }
 
+  log.info("/scan " + subnet + ":" + netmask )
   try {
     const subnetInfo = ip.cidrSubnet(`${subnet}/${netmask}`);
     const firstIp = ip.toLong(subnetInfo.firstAddress);
@@ -524,7 +528,13 @@ app.get("/scan", async (req, res) => {
                   data = await getSnmpData(ipAddr, vendor_noinv);
                 } catch (err) {
                   // siamo in un caso dove il brand stampante è noto, ma snmp disabilitato
-                  log.info("printer with ip=" + ipAddr + " " + vendor[mac.slice(0, 8)] + " snmp disabled")
+                  log.info(
+                    "printer with ip=" +
+                      ipAddr +
+                      " " +
+                      vendor[mac.slice(0, 8)] +
+                      " snmp disabled"
+                  );
                   ip_array.push({
                     ip: ipAddr,
                     mac: mac,

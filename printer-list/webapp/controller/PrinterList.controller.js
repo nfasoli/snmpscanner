@@ -26,13 +26,19 @@ sap.ui.define(
 
           // Gestisci i messaggi ricevuti
           this.socket.onmessage = function (event) {
-            console.log("message received: " + JSON.stringify(event))
+            console.log("message received: " + JSON.stringify(event));
             var newData = JSON.parse(event.data);
-            console.log(that)
-            if(newData.response == 'token') 
-                that.byId("_IDGenButton2").setText("prova")
-           // oModel.setData(newData);
-           // oModel.refresh(); // Rinfresca la tabella
+            console.log(that);
+            if (newData.response == "token")
+              that.byId("_IDGenButton2").setText("prova");
+            else if (newData.response == "scan") {
+              // Logica per la scansione
+              sap.m.MessageToast.show(
+                "Scan button pressed for subnet: " + newData.subnet
+              );
+            }
+            // oModel.setData(newData);
+            // oModel.refresh(); // Rinfresca la tabella
           };
 
           // Gestisci eventuali errori
@@ -330,6 +336,46 @@ sap.ui.define(
 
         onCloseDialog: function () {
           this.byId("subnetDialog").close();
+        },
+        onScan: function (oEvent) {
+          var oButton = oEvent.getSource();
+          var oItem = oButton.getParent();
+          var oContext = oItem.getBindingContext();
+
+          // Ottieni i dati della riga
+          var oData = oContext.getObject();
+          console.log(oData)
+          var sUrl = "http://localhost:5000/scan?subnet=" + oData.subnet + "&netmask=" + oData.mask;
+          var oView = this.getView();
+          var that = this;
+
+          oButton.setEnabled(false);
+
+          // Effettua la chiamata AJAX per recuperare i dati
+          $.ajax({
+            url: sUrl,
+            method: "GET",
+            success: function (data) {
+              // Imposta i dati nel modello
+              oButton.setEnabled(true);
+              sap.m.MessageToast.show(
+                "Finita scansione per la subnet: " + oData.subnet
+              );
+            },
+            error: function (error) {
+              console.error("Errore nel recupero dei dati: ", error);
+              oButton.enabled = true;
+
+              return;
+            },
+          });
+
+          // Invia il messaggio "reload" al backend tramite WebSocket
+          if (this.socket && this.socket.readyState === WebSocket.OPEN) {
+            this.socket.send(JSON.stringify({ action: "scan", oData }));
+          } else {
+            console.error("WebSocket is not open");
+          }
         },
       }
     );

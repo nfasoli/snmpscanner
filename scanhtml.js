@@ -1,18 +1,22 @@
 const fs = require('fs');
+const https = require('https');
 const axios = require('axios');
 const mysql = require('mysql2/promise');
 const { Address4 } = require('ip-address');
 
+const dbConfig = {
+    host: "localhost",
+    user: "nicola",
+    password: "Agrintesa2025",
+    database: "printers",
+  };
+
+const saveDir = "scanhtml"
 // Connect to the MySQL database
 async function getIPs() {
-    const connection = await mysql.createConnection({
-        host: 'localhost',
-        user: 'root',
-        password: 'password',
-        database: 'database'
-    });
+    const connection = await mysql.createConnection(dbConfig);
 
-    const [rows] = await connection.execute("SELECT ip, mask FROM ip WHERE snmp = 'false'");
+    const [rows] = await connection.execute("SELECT ip, mask FROM ip as a inner join subnet as b on a.subnet = b.id WHERE snmp = false order by inet_aton(ip)");
     await connection.end();
     return rows;
 }
@@ -33,12 +37,14 @@ async function fetchAndSave(ipAddress, mask) {
             httpsAgent: new https.Agent({ rejectUnauthorized: false })
         });
         saveResponse(subnet, ipAddress, response.data);
+        console.log(`Saved ${ipAddress}.html`)
     } catch (error) {
         try {
             let response = await axios.get(`https://${ipAddress}`, {
                 httpsAgent: new https.Agent({ rejectUnauthorized: false })
             });
             saveResponse(subnet, ipAddress, response.data);
+            console.log(`Saved ${ipAddress}.html`)
         } catch (error) {
             console.log(`Failed to fetch ${ipAddress}: ${error.message}`);
         }
@@ -47,17 +53,35 @@ async function fetchAndSave(ipAddress, mask) {
 
 // Function to save response to HTML file
 function saveResponse(subnet, ipAddress, data) {
-    if (!fs.existsSync(subnet)) {
-        fs.mkdirSync(subnet);
+    if (!fs.existsSync(saveDir + "/" + subnet)) {
+        fs.mkdirSync(saveDir + "/" + subnet);
     }
-    fs.writeFileSync(`${subnet}/${ipAddress}.html`, data);
+    fs.writeFileSync(`${saveDir}/${subnet}/${ipAddress}.html`, data);
 }
+
+const maxConnections = 50;
 
 // Main function to execute the process
 async function main() {
     let ips = await getIPs();
-    for (let row of ips) {
-        await fetchAndSave(row.ip, row.mask);
+    let activeConnections = 0;
+    let index = 0;
+
+    async function processNext() {
+        if (index >= ips.length) return;
+        if (activeConnections >= maxConnections) return;
+
+        let row = ips[index++];
+        activeConnections++;
+        fetchAndSave(row.ip, row.mask).finally(() => {
+            activeConnections--;
+            processNext();
+        });
+        processNext();
+    }
+
+    for (let i = 0; i < maxConnections; i++) {
+        processNext();
     }
 }
 
